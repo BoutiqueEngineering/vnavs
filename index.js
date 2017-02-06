@@ -4,6 +4,24 @@ var path = require('path');
 var spawn = require('child_process').spawn;
 var proc;
 
+var mqtt_broker = 'mqtt://192.168.8.101'
+var mqtt = require('mqtt')
+var mqttc  = mqtt.connect(mqtt_broker)
+var mqtt_topic_take_pic = 'take_pic'
+var mqtt_topic_take_pic = 'take_pic'
+var mqtt_topic_set_speed = 'set_speed'
+ 
+//mqttc.on('connect', function () {
+//  mqttc.subscribe('presence')
+//  mqttc.publish('presence', 'Hello mqtt')
+//})
+ 
+//mqttc.on('message', function (topic, message) {
+  // message is Buffer 
+//  console.log(message.toString())
+//  mqttc.end()
+//})
+
 var image_subdir = '/temp'
 var image_path = image_subdir + '/test.jpg'
 var image_fqn = '/home/pi/projects/vnavs' + image_path
@@ -12,8 +30,11 @@ var static_subdir = '/node_root'
 // connect, message and disconnect are built-in socket.io event names
 var socket_event_connect = 'connect'
 var socket_event_disconnect = 'disconnect'
-var socket_event_imageReady = 'imageReady'
-var socket_event_startStream = 'startStream'
+var socket_event_imageReady = 'imageReady'		// to browser, notify that image available
+var socket_event_startStream = 'startStream'		// from browser, request to start getting notifications
+var socket_event_take_pic = 'takePic'			// from browser, operate camera
+var socket_event_move_forward = 'moveForward'		// from browser, move forward
+var socket_event_move_stop = 'moveStop'			// from browser, move stop
 
 var app = express();
 var http = require('http').Server(app);
@@ -41,6 +62,15 @@ io.on('connection', function(socket) {
   });
   socket.on(socket_event_startStream, function() {
     startStreaming(io);
+  });
+  socket.on(socket_event_move_forward, function() {
+    mqttc.publish(mqtt_topic_set_speed, 'f')
+  });
+  socket.on(socket_event_move_stop, function() {
+    mqttc.publish(mqtt_topic_set_speed, 's')
+  });
+  socket.on(socket_event_take_pic, function() {
+    mqttc.publish(mqtt_topic_take_pic, 'now')
   });
 });
 
