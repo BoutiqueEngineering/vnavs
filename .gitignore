@@ -40,4 +40,4 @@ jspm_packages
 *.pyc
 
 # Test Captures and Work Data
-.test
+temp

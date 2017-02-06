@@ -79,10 +79,16 @@ class vehicle(object):
         self.mot_slow_b = 80
         self.steering = self.board.get_pin('d:10:s')
         self.st_straight = 90
+        # speed in mm/second - depends on vehicle and battery condition
+        self.speed_crawl_forward = 10	# minimum start moving speed
         self.speed_increment = 1	# a reasonable quantity for "go a bit faster"
-        self.max_speed = 13411		# 30mph / 13.4112 meters/second
+        self.speed_max = 13411		# 30mph / 13.4112 meters/second
         self.camera = picamera.PiCamera()
         self.camera.vflip = True
+
+    def Motor(self, pulse):
+        # not sure what this needs to do
+        self.motor.write(pulse)
 
 class helmsman(mqtt_node):
     def __init__(self):
@@ -114,14 +120,20 @@ class helmsman(mqtt_node):
         pass
 
     def AdjustDriving(self):
-        pass
+        # This is just a place holder
+        if self.speed_goal == 0:
+            self.v.Motor(self.v.mot_stop)
+        else:
+            self.v.Motor(self.v.mot_slow_f)
 
     def GetGoalSpeed(self, speed_request):
         if speed_request in '+=':
           speed_goal = self.speed_goal + self.v.speed_increment
         elif speed_request == '-':
           speed_goal = self.speed_goal - self.v.speed_increment
-        elif speed_request == 'z':
+        elif speed_request == 'f':			# move forward slowly
+          speed_goal = self.v.speed_crawl_forward
+        elif speed_request == 's':			# stop moving
           speed_goal = 0
         else:
           try:
@@ -131,8 +143,8 @@ class helmsman(mqtt_node):
             speed_goal = self.speed_goal
         if speed_goal < 0:
             self.speed_goal = 0
-        elif speed_goal > self.v.max_speed:
-            self.speed_goal = self.v.max_speed
+        elif speed_goal > self.v.speed_max:
+            self.speed_goal = self.v.speed_max
         else:
             self.speed_goal = speed_goal
 
