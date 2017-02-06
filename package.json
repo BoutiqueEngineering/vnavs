@@ -1,0 +1,19 @@
+{
+  "name": "vnavs",
+  "version": "0.0.1",
+  "description": "Visually Navigating Autonomous Vehicle System (VNAVS)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BoutiqueEngineering/vnavs.git"
+  },
+  "author": "Al Margolis",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/BoutiqueEngineering/vnavs/issues"
+  },
+  "homepage": "https://github.com/BoutiqueEngineering/vnavs#readme"
+}
