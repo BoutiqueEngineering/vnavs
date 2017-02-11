@@ -39,6 +39,11 @@ margin-top: 20px;
   <button type="button" id="" class="btn btn-info" onclick="socket.emit('moveForward');">Forward</button>
   <button type="button" id="" class="btn btn-info" onclick="socket.emit('moveStop');">Stop</button>
   <div class="row">
+    <button type="button" id="" class="btn btn-info" onclick="socket.emit('steerLeft');">Left</button>
+    <button type="button" id="" class="btn btn-info" onclick="socket.emit('steerStraight');">Straight</button>
+    <button type="button" id="" class="btn btn-info" onclick="socket.emit('steerRight');">Right</button>
+  </div>
+  <div class="row">
     <img src="" id="stream">
   </div>
 </body>

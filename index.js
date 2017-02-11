@@ -10,6 +10,7 @@ var mqttc  = mqtt.connect(mqtt_broker)
 var mqtt_topic_take_pic = 'take_pic'
 var mqtt_topic_take_pic = 'take_pic'
 var mqtt_topic_set_speed = 'set_speed'
+var mqtt_topic_steer = 'steer'
  
 //mqttc.on('connect', function () {
 //  mqttc.subscribe('presence')
@@ -31,10 +32,14 @@ var static_subdir = '/node_root'
 var socket_event_connect = 'connect'
 var socket_event_disconnect = 'disconnect'
 var socket_event_imageReady = 'imageReady'		// to browser, notify that image available
+var socket_event_status = 'vnavsStatus'			// to browser, provide vnavs state
 var socket_event_startStream = 'startStream'		// from browser, request to start getting notifications
 var socket_event_take_pic = 'takePic'			// from browser, operate camera
 var socket_event_move_forward = 'moveForward'		// from browser, move forward
 var socket_event_move_stop = 'moveStop'			// from browser, move stop
+var socket_event_steer_straight = 'steerStraight'
+var socket_event_steer_right = 'steerRight'
+var socket_event_steer_left = 'steerLeft'
 
 var app = express();
 var http = require('http').Server(app);
@@ -71,6 +76,15 @@ io.on('connection', function(socket) {
   });
   socket.on(socket_event_take_pic, function() {
     mqttc.publish(mqtt_topic_take_pic, 'now')
+  });
+  socket.on(socket_event_steer_straight, function() {
+    mqttc.publish(mqtt_topic_steer, 's')
+  });
+  socket.on(socket_event_steer_left, function() {
+    mqttc.publish(mqtt_topic_steer, '+l')
+  });
+  socket.on(socket_event_steer_right, function() {
+    mqttc.publish(mqtt_topic_steer, '+r')
   });
 });
 
