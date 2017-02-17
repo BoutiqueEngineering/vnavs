@@ -24,7 +24,7 @@ var mqtt_topic_steer = 'steer'
 //})
 
 var image_subdir = '/temp'
-var image_path = image_subdir + '/test.jpg'
+var image_path = image_subdir + '/single.jpg'
 var image_fqn = '/home/pi/projects/vnavs' + image_path
 var static_subdir = '/node_root'
 
