@@ -69,6 +69,7 @@ io.on('connection', function(socket) {
     startStreaming(io);
   });
   socket.on(socket_event_move_forward, function() {
+    console.log("forward");
     mqttc.publish(mqtt_topic_set_speed, 'f')
   });
   socket.on(socket_event_move_stop, function() {
