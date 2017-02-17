@@ -3,6 +3,7 @@ import math
 import time
 from scipy import weave
 import sys
+import re
 
 
 # automatically set threshold using technique from 
@@ -38,6 +39,9 @@ def simplest_cb(img, percentile):
     # The percentile parameter is the integer percentage that you want included
     # in this compression. The upper and lower percentiles are each 1/2 of this number.
     #assert img.shape[2] == 3
+    #
+    # from https://gist.github.com/DavidYKay/9dad6c4ab0d8d7dbf3dc
+    # possibly from this Stanford C++ code: https://web.stanford.edu/~sujason/ColorBalancing/simplestcb.html
     assert percentile > 0 and percentile < 100
 
     half_percentile = percentile / 200.0
@@ -152,15 +156,6 @@ def thinning_example(src):
 	cv2.imshow("src", bw)
 	cv2.imshow("thinning", bw2)
 	cv2.waitKey()
-
-
-
-def ColorBalance(spath, dpath):
-  # from https://gist.github.com/DavidYKay/9dad6c4ab0d8d7dbf3dc
-  # possibly from this Stanford C++ code: https://web.stanford.edu/~sujason/ColorBalancing/simplestcb.html
-  img = cv2.imread(spath)
-  cb_img = simplest_cb(img, 20)
-  cv2.imwrite(dpath, cb_img)
 
 def LineFind(fpath):
   # load img
@@ -385,7 +380,7 @@ def FilterContours(img, contours, select_color='r'):
       continue
     #print("Vertices:", len(this_c), "Area:", area, "@", int(rect[0][0]), int(rect[0][1]), "size", int(rect[1][0]), int(rect[1][1]),  "R:", int(rect[2]), "Color:", color_str)
     new_contours.append(this_c)
-  new_contours = sorted(new_contours, key = cv2.contourArea, reverse = True)[0:4]
+  new_contours = sorted(new_contours, key = cv2.contourArea, reverse = True)[0:8]
   return new_contours
 
 def mean(numbers):
@@ -402,6 +397,7 @@ class ImageAnalyzer(object):
         self.img_crop = Crop
         self.img_blur_method = Blur
         self.img_canny_method = CannyMethod
+        self.img_color_balance_method = ColorBalance
         self.annotate_fill_method = ContourFill
         self.annotate_contour_outline = ContourOutline
         self.do_filter_contours = DoFilterContours
@@ -414,8 +410,8 @@ class ImageAnalyzer(object):
         image = cv2.imread(self.img_fpath + '_s.jpg')
         DrawGrid(self.Snapshot(image, 'Original'))
 
-        if ColorBalance == 'c':
-            image = simplest_cb(original_image, 20)
+        if self.img_color_balance_method == 'c':
+            image = simplest_cb(image, 20)
         self.Snapshot(image, 'ColorBalanced')
 
         # crop
@@ -459,13 +455,15 @@ class ImageAnalyzer(object):
         if self.do_filter_contours:
             contours = FilterContours(cropped_image, contours)
             print("Filtered Contour Ct:", len(contours))
-            self.ClassifyContours(contours)
+            self.ClassifyContours(cropped_image, contours)
 
         annotated_cropped_image = cropped_image.copy()
         outline_color = (0, 255, 0)	# green
         path_guide_color = (0, 255, 255)
         if self.vert_line is not None:
             cv2.line(annotated_cropped_image, self.vert_line[0], self.vert_line[1], path_guide_color, 2)
+        if self.horz_line is not None:
+            cv2.line(annotated_cropped_image, self.horz_line[0], self.horz_line[1], path_guide_color, 2)
 
         if self.annotate_fill_method == 'b':
             self.AnnotateContourBoxes(annotated_cropped_image, contours)
@@ -480,10 +478,10 @@ class ImageAnalyzer(object):
         self.WriteSnapshots()
 
     def WriteSnapshots(self):
-        delete_pattern = self.img_fpath + "_D*.jpg"A
+        delete_pattern = self.img_fpath + "_D*.jpg"
         dir = '.'
         for f in os.listdir(dir):
-            if re.search(pattern, f):
+            if re.search(delete_pattern, f):
                 print("Deleting", f)
                 os.remove(os.path.join(dir, f))
 
@@ -491,37 +489,48 @@ class ImageAnalyzer(object):
           fn = "%s_D%02d_%s.jpg" % (self.img_fpath, ix, self.snap_titles[ix])
           cv2.imwrite(fn, image)
 
-    def ClassifyContours(self, contours):
+    def ClassifyContours(self, img, contours):
+        rows,cols = img.shape[:2]
         vert = []
         vert_contours = []
         horz = []
-        other = []
+        horz_contours = []
         for this_c in contours:
             rect = cv2.minAreaRect(this_c)
             print(rect)
             # rect: center (x,y), (width, height), angle of rotation
             angle = int(rect[2])
-            if angle <= -50:
+            ctr_line = CalcRectCenterline(rect)
+            print("Ctr Line:", ctr_line)
+            if angle <= -60:
                 vert.append(angle)
-                ctr_line = CalcRectCenterline(rect)
-                print("Ctr Line:", ctr_line)
                 vert_contours.append(ctr_line[0])
                 vert_contours.append(ctr_line[1])
             else:
                 horz.append(angle)
-                #other.append(angle)
-        print("Vert:", vert, mean(vert))
-        #[vx,vy,x,y]
-        print("Points:", vert_contours)
+                horz_contours.append(ctr_line[0])
+                horz_contours.append(ctr_line[1])
+        #
         vert_points = np.asarray(vert_contours)
+        print("Vert:", vert, mean(vert), "Points:", vert_points)
         if len(vert_points) > 0:
-            vert_line = cv2.fitLine(vert_points, cv2.DIST_L1,0,0.01,0.01)			# four points
-            self.vert_line = ((vert_line[0], vert_line[1]), (vert_line[2], vert_line[3]))	# two vertices
+            [vx,vy,x,y] = cv2.fitLine(vert_points, cv2.DIST_L1,0,0.01,0.01)			# four points
+            lefty = int((-x*vy/vx) + y)
+            righty = int(((cols-x)*vy/vx)+y)
+            self.vert_line = ((cols-1,righty), (0,lefty))
         else:
             self.vert_line = None
         print(self.vert_line)
-        print("Horz:", horz, mean(horz))
-        print("Othr:", other, mean(other))
+        #
+        horz_points = np.asarray(horz_contours)
+        print("Horz:", horz, mean(horz), "Points:", horz_points)
+        if len(horz_points) > 0:
+            [vx,vy,x,y] = cv2.fitLine(horz_points, cv2.DIST_L1,0,0.01,0.01)			# four points
+            lefty = int((-x*vy/vx) + y)
+            righty = int(((cols-x)*vy/vx)+y)
+            self.horz_line = ((cols-1,righty), (0,lefty))
+        else:
+            self.horz_line = None
 
     def Snapshot(self, image, title='image'):
         """
