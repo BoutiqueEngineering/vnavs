@@ -85,13 +85,13 @@ class vehicle(object):
     def __init__(self):
         self.board = Arduino('/dev/ttyUSB0')
         self.motor = self.board.get_pin('d:9:s')
-        self.mot_stop = 90
-        self.mot_goal = self.mot_stop		# This is the pulse we are ramping towards
-        self.mot_jump = 100			# This is the minimum speed to start moving from stop
+        self.mot_offset = 90
+        self.mot_goal = 0		# This is the pulse we are ramping towards
+        self.mot_jump = 10			# This is the minimum speed to start moving from stop
         self.mot_ramp = 0			# Current ramping increment
-        self.mot_last_pulse = self.mot_stop
-        self.mot_last_pulse_commit = self.mot_stop
-        self.motor.write(self.mot_last_pulse)
+        self.mot_last_pulse = 0
+        self.mot_last_pulse_commit = 0
+        self.motor.write(self.mot_offset)	# Stop motor if on
         self.steering = self.board.get_pin('d:10:s')
         self.st_straight = 90
         # speed in mm/second - depends on vehicle and battery condition
@@ -104,7 +104,7 @@ class vehicle(object):
     def ConvertSpeedToPulseParameter(self, speed):
         # for now, speed is just arduino servo increment value.
         # Degree of servo turn, but cetnered at 0 instead of 90.
-        return self.mot_stop + speed
+        return speed
 
     def Motor(self, speed_goal):
         # This sends commands to the hardware motor controller (ESC or H-Bridge).
@@ -114,23 +114,27 @@ class vehicle(object):
         pulse_goal = self.ConvertSpeedToPulseParameter(speed_goal)
         if pulse_goal != self.mot_goal:
             # the goal has changed, need to reset ramping variables
-            if pulse_goal == self.mot_stop:
+            if pulse_goal == 0:
                 # we want to stop
                 self.mot_last_pulse = pulse_goal
                 self.mot_goal = pulse_goal
                 self.mot_ramp = 0
-            elif (pulse_goal > self.mot_stop) and (self.mot_last_pulse == self.mot_stop):
+            elif (pulse_goal != 0) and (self.mot_last_pulse == 0):
                 # we are starting to move
-                if pulse_goal > self.mot_jump:
+                if abs(pulse_goal) > self.mot_jump:
                     # we are starting fast, so just do it
                     self.mot_last_pulse = pulse_goal
                     self.mot_goal = pulse_goal
                     self.mot_ramp = 0
                 else:
                     # we are starting slow, need to make an initial jump
-                    self.mot_last_pulse = self.mot_jump
                     self.mot_goal = pulse_goal
-                    self.mot_ramp = -1
+                    if pulse_goal > 0:
+                      self.mot_last_pulse = self.mot_jump
+                      self.mot_ramp = -1
+                    else:
+                      self.mot_last_pulse = -self.mot_jump
+                      self.mot_ramp = +1
             else:
                 # this is speed change while moving
                 self.mot_last_pulse = pulse_goal
@@ -142,7 +146,7 @@ class vehicle(object):
                 self.mot_last_pulse += self.mot_ramp
                 if self.mot_last_pulse == self.mot_goal:
                     self.mot_ramp = 0
-        self.motor.write(self.mot_last_pulse)
+        self.motor.write(self.mot_offset + self.mot_last_pulse)
         if self.mot_last_pulse_commit != self.mot_last_pulse:
            print('Motor: ', self.mot_last_pulse)
            self.mot_last_pulse_commit = self.mot_last_pulse
@@ -172,14 +176,20 @@ def cameraman(helmsman):
                     prev_mode = 's'
                     sleep_interval = 1
             if prev_mode == 's':
-                picfn = 'temp/temp.jpg'
+                picfn = 'temp/single.jpg'
             else: 
                 run_ct += 1
                 picfn = 'temp/R%d_%d.jpg' % (run_ct, time.clock())
             #my_stream = io.BytesIO()
             #camera.capture(my_stream, 'jpeg')
-            camera.capture(picfn, 'jpeg')
-            helmsman.camera_last_fn = picfn
+            if (prev_mode == 'r') or (helmsman.camera_snap == True):
+              camera.capture(picfn, 'jpeg')
+              helmsman.camera_last_fn = picfn
+              if prev_mode == 's':
+                  # There is a potential race condition here where we miss the second of two
+                  # closely timed requests. We will still have taken a photo very recently
+                  # and published that. That shoud be good enough.
+                  helmsman.camera_snap = False
             time.sleep(sleep_interval)
 
 class helmsman(mqtt_node):
@@ -187,15 +197,16 @@ class helmsman(mqtt_node):
         super().__init__(Subscriptions=('set_speed', 'steer', 'take_pic'), Blocking=False)
         self.v = vehicle()
         self.camera_mode = 's'		# set by helmsman, s=single, r=run
+        self.camera_snap = False	# set by helmsman, cleared by cameraman
         self.camera_last_fn = None	# set by camerman
         self.speed_goal = 0		# (int) mm/sec
         self.steering_goal = 0		# (int) degrees (0 = straigh, neg is degrees left, pos is degrees right)
-        #self.camera = threading.Thread(target=cameraman, args=(self,))
-        #self.camera.start()
+        self.camera = threading.Thread(target=cameraman, args=(self,))
+        self.camera.start()
 
     def rmsg_take_pic(self, msg):
-        #self.v.camera.capture('temp/test.jpg')
-        pass
+        # should we verify mode and report if a problem?
+        self.camera_snap = True
 
     def rmsg_set_speed(self, msg):
         self.GetGoalSpeed(msg)
@@ -227,7 +238,7 @@ class helmsman(mqtt_node):
             self.camera_mode = 's'
         else:
             self.camera_mode = 'r'
-            time.sleep(2)
+            #time.sleep(2)
         self.v.Motor(self.speed_goal)
         self.v.Steering(self.steering_goal)
 
@@ -246,10 +257,11 @@ class helmsman(mqtt_node):
           except:
             print("Bad Input '%s'" %(speed_request))
             speed_goal = self.speed_goal
-        if speed_goal < 0:
-            self.speed_goal = 0
-        elif speed_goal > self.v.speed_max:
-            self.speed_goal = self.v.speed_max
+        if abs(speed_goal) > self.v.speed_max:
+            if speed_goal > 0:
+                self.speed_goal = +self.v.speed_max
+            else:
+                self.speed_goal = -self.v.speed_max
         else:
             self.speed_goal = speed_goal
 
