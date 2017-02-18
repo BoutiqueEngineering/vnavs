@@ -5,13 +5,16 @@ import io
 import sys
 import threading
 import time
+import cv2
 
 from pyfirmata import Arduino, util
 
 import paho.mqtt.client as mqtt
 
 import picamera
-import io
+import picamera.array
+
+import OpticChiasm
 
 handler_method_prefix = 'rmsg_'
 
@@ -183,7 +186,17 @@ def cameraman(helmsman):
             #my_stream = io.BytesIO()
             #camera.capture(my_stream, 'jpeg')
             if (prev_mode == 'r') or (helmsman.camera_snap == True):
-              camera.capture(picfn, 'jpeg')
+              with picamera.array.PiRGBArray(camera) as stream:
+                  print(time.clock())
+                  camera.capture(stream, format='bgr')
+                  print(time.clock())
+                  brain = OpticChiasm.ImageAnalyzer()
+                  brain.do_save_snaps = False
+                  brain.img_crop=(250,450)
+                  brain.FindLines(image=stream.array)
+                  print(time.clock())
+                  cv2.imwrite(picfn, brain.img_annotated)
+                  print(time.clock())
               helmsman.camera_last_fn = picfn
               if prev_mode == 's':
                   # There is a potential race condition here where we miss the second of two
@@ -217,9 +230,14 @@ class helmsman(mqtt_node):
         print(self.steering_goal)
 
     def Loop(self):
-      while True:
-          self.Process()
-          time.sleep(0.1)
+        while True:
+            self.Process()
+            time.sleep(0.1)
+
+    def ProcessImage(self):
+        brain = OpticChiasm.ImageAnalyzer()
+        brain.do_save_snaps = False
+        #brain.FindLines(image(
 
     def Process(self):
         self.GetGoal()

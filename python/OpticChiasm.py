@@ -1,7 +1,7 @@
 import os, cv2, numpy as np
 import math
 import time
-from scipy import weave
+#from scipy import weave
 import sys
 import re
 
@@ -398,6 +398,7 @@ class ImageAnalyzer(object):
         self.img_blur_method = Blur
         self.img_canny_method = CannyMethod
         self.img_color_balance_method = ColorBalance
+        self.img_annotated = None		# OpenCV annotated image object
         self.annotate_fill_method = ContourFill
         self.annotate_contour_outline = ContourOutline
         self.do_filter_contours = DoFilterContours
@@ -406,8 +407,9 @@ class ImageAnalyzer(object):
         self.do_save_snaps = True
         self.vert_line = None
 
-    def FindLines(self):
-        image = cv2.imread(self.img_fpath + '_s.jpg')
+    def FindLines(self, image=None):
+        if image is None:
+            image = cv2.imread(self.img_fpath + '_s.jpg')
         DrawGrid(self.Snapshot(image, 'Original'))
 
         if self.img_color_balance_method == 'c':
@@ -473,11 +475,13 @@ class ImageAnalyzer(object):
         if self.annotate_contour_outline:
             outline_color = (0, 255, 0)	# green
             cv2.drawContours(annotated_cropped_image, contours, -1, outline_color, 1)
-        self.Snapshot(annotated_cropped_image, 'Annotated')
+        self.img_annotated = self.Snapshot(annotated_cropped_image, 'Annotated')
 
         self.WriteSnapshots()
 
     def WriteSnapshots(self):
+        if not self.do_save_snaps:
+            return
         delete_pattern = self.img_fpath + "_D*.jpg"
         dir = '.'
         for f in os.listdir(dir):
