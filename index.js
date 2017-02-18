@@ -1,16 +1,23 @@
 var express = require('express');
 var fs = require('fs');
+var ini = require('ini')
+var expandHomeDir = require('expand-home-dir')
 var path = require('path');
 var spawn = require('child_process').spawn;
 var proc;
 
-var mqtt_broker = 'mqtt://192.168.8.101'
 var mqtt = require('mqtt')
+var mqtt_topic_take_pic = 'helmsman/take_pic'
+var mqtt_topic_take_pic = 'helmsman/take_pic'
+var mqtt_topic_set_speed = 'helmsman/set_speed'
+var mqtt_topic_steer = 'helmsman/steer'
+
+var config_fn = expandHomeDir('~/vnavs.ini')
+var config = ini.parse(fs.readFileSync(config_fn, 'utf-8'))
+var mqtt_broker = 'mqtt://' + config.MqttBroker.Host
 var mqttc  = mqtt.connect(mqtt_broker)
-var mqtt_topic_take_pic = 'take_pic'
-var mqtt_topic_take_pic = 'take_pic'
-var mqtt_topic_set_speed = 'set_speed'
-var mqtt_topic_steer = 'steer'
+
+
  
 //mqttc.on('connect', function () {
 //  mqttc.subscribe('presence')
@@ -36,6 +43,7 @@ var socket_event_status = 'vnavsStatus'			// to browser, provide vnavs state
 var socket_event_startStream = 'startStream'		// from browser, request to start getting notifications
 var socket_event_take_pic = 'takePic'			// from browser, operate camera
 var socket_event_move_forward = 'moveForward'		// from browser, move forward
+var socket_event_move_reverse = 'moveReverse'		// from browser, move backward
 var socket_event_move_stop = 'moveStop'			// from browser, move stop
 var socket_event_steer_straight = 'steerStraight'
 var socket_event_steer_right = 'steerRight'
@@ -71,6 +79,10 @@ io.on('connection', function(socket) {
   socket.on(socket_event_move_forward, function() {
     console.log("forward");
     mqttc.publish(mqtt_topic_set_speed, 'f')
+  });
+  socket.on(socket_event_move_reverse, function() {
+    console.log("reverse");
+    mqttc.publish(mqtt_topic_set_speed, 'r')
   });
   socket.on(socket_event_move_stop, function() {
     mqttc.publish(mqtt_topic_set_speed, 's')
