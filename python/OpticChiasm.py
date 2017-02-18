@@ -399,6 +399,8 @@ class ImageAnalyzer(object):
         self.img_canny_method = CannyMethod
         self.img_color_balance_method = ColorBalance
         self.img_annotated = None		# OpenCV annotated image object
+        self.img_source_dir = ''
+        self.img_fname_suffix = ''
         self.annotate_fill_method = ContourFill
         self.annotate_contour_outline = ContourOutline
         self.do_filter_contours = DoFilterContours
@@ -409,7 +411,9 @@ class ImageAnalyzer(object):
 
     def FindLines(self, image=None):
         if image is None:
-            image = cv2.imread(self.img_fpath + '_s.jpg')
+            fpath = os.path.join(self.img_source_dir, self.img_fpath + self.img_fname_suffix + '.jpg')
+            print fpath
+            image = cv2.imread(fpath)
         DrawGrid(self.Snapshot(image, 'Original'))
 
         if self.img_color_balance_method == 'c':
@@ -653,6 +657,10 @@ if __name__ == '__main__':
   brain.img_fpath = 'opencv_1'; brain.img_crop=(600,75)		# right stripe
   brain.img_fpath = 'opencv_4'; brain.img_crop=(550,75)		# right stripe
   brain.img_fpath = 'opencv_6'; brain.img_crop=(250,450)
+  brain.img_fpath = 'R10_11'; brain.img_crop=(250,450)
+  brain.img_source_dir = '/volumes/pi/projects/vnavs/temp'
+  brain.img_fname_suffix = '_s'
+  brain.img_fname_suffix = ''
   brain.FindLines()
   stop_time = time.clock()
   print("Elapsed Time:", (stop_time - start_time))

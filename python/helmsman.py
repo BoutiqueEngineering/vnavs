@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import cv2
+import ConfigParser
 
 from pyfirmata import Arduino, util
 
@@ -16,15 +17,18 @@ import picamera.array
 
 import OpticChiasm
 
+config_file_path = "~/vnavs.ini"
 handler_method_prefix = 'rmsg_'
 
 class mqtt_node(object):
     def __init__(self, Subscriptions=[], Blocking=False):
+        self.config = ConfigParser.SafeConfigParser()
+        self.config.readfp(open(config_file_path))
         self.blocking_mode = Blocking
         self.subscriptions = Subscriptions
-        self.broker_host = "localhost"
-        self.broker_host = "192.168.8.101"
-        self.broker_port = 1883
+        self.handlers = {}
+        self.broker_host = self.config.get("MqttBroker", "Host")
+        self.broker_port = self.config.get("MqttBroker", "Port")	# 1883
         self.broker_timeout = 60
 
     def Connect(self):
@@ -50,16 +54,17 @@ class mqtt_node(object):
     def on_connect(self, client, userdata, flags, rc):
         print("rc: " + str(rc))
         for this_topic in self.subscriptions:
-            handler_name = handler_method_prefix + this_topic
-            if not hasattr(self, handler_name):
+            handler_name = handler_method_prefix + this_topic.replace('/', '_'
+            handler_method = getattr(self, handler_name, None)
+            if handler_method is None:
                 print("No message handler for topic '%s'" % (this_topic))
+            self.handlers[this_topic] = handler_method
             self.mqttc.subscribe(this_topic, 0)
         print(self.subscriptions)
 
     def on_message(self, client, userdata, message):
         print(message.topic + " " + str(message.qos) + " " + str(message.payload))
-        handler_name = handler_method_prefix + message.topic
-        handler_method = getattr(self, handler_name)
+        handler_method = self.handlers[message.topic]
         handler_method(message.payload.decode("utf-8"))
 
     def on_publish(self, client, userdata, mid):
@@ -186,6 +191,8 @@ def cameraman(helmsman):
             #my_stream = io.BytesIO()
             #camera.capture(my_stream, 'jpeg')
             if (prev_mode == 'r') or (helmsman.camera_snap == True):
+              camera.capture(picfn)
+              """
               with picamera.array.PiRGBArray(camera) as stream:
                   print(time.clock())
                   camera.capture(stream, format='bgr')
@@ -197,6 +204,7 @@ def cameraman(helmsman):
                   print(time.clock())
                   cv2.imwrite(picfn, brain.img_annotated)
                   print(time.clock())
+              """
               helmsman.camera_last_fn = picfn
               if prev_mode == 's':
                   # There is a potential race condition here where we miss the second of two
@@ -207,7 +215,7 @@ def cameraman(helmsman):
 
 class helmsman(mqtt_node):
     def __init__(self):
-        super().__init__(Subscriptions=('set_speed', 'steer', 'take_pic'), Blocking=False)
+        super().__init__(Subscriptions=('helmsman/set_speed', 'helmsman/steer', 'helmsman/take_pic'), Blocking=False)
         self.v = vehicle()
         self.camera_mode = 's'		# set by helmsman, s=single, r=run
         self.camera_snap = False	# set by helmsman, cleared by cameraman
@@ -217,15 +225,15 @@ class helmsman(mqtt_node):
         self.camera = threading.Thread(target=cameraman, args=(self,))
         self.camera.start()
 
-    def rmsg_take_pic(self, msg):
+    def rmsg_helmsman_take_pic(self, msg):
         # should we verify mode and report if a problem?
         self.camera_snap = True
 
-    def rmsg_set_speed(self, msg):
+    def rmsg_helmsman_set_speed(self, msg):
         self.GetGoalSpeed(msg)
         print(self.speed_goal)
 
-    def rmsg_steer(self, msg):
+    def rmsg_helmsman_steer(self, msg):
         self.GetGoalSteering(msg)
         print(self.steering_goal)
 
