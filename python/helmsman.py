@@ -3,6 +3,7 @@ from builtins import (bytes, str, open, super, range,
                       zip, round, input, int, pow, object)
 import io
 import sys
+import os
 import threading
 import time
 import cv2
@@ -17,7 +18,7 @@ import picamera.array
 
 import OpticChiasm
 
-config_file_path = "~/vnavs.ini"
+config_file_path = os.path.expanduser('~/vnavs.ini')
 handler_method_prefix = 'rmsg_'
 
 class mqtt_node(object):
@@ -28,7 +29,7 @@ class mqtt_node(object):
         self.subscriptions = Subscriptions
         self.handlers = {}
         self.broker_host = self.config.get("MqttBroker", "Host")
-        self.broker_port = self.config.get("MqttBroker", "Port")	# 1883
+        self.broker_port = int(self.config.get("MqttBroker", "Port"))	# 1883
         self.broker_timeout = 60
 
     def Connect(self):
@@ -39,6 +40,7 @@ class mqtt_node(object):
         self.mqttc.on_publish = self.on_publish
         self.mqttc.on_subscribe = self.on_subscribe
         # Connect
+        print("Connecting to MQTT broker:", self.broker_host, self.broker_port)
         self.mqttc.connect(self.broker_host, self.broker_port, self.broker_timeout)
         if self.blocking_mode:
             self.mqttc.loop_forever()
@@ -54,7 +56,7 @@ class mqtt_node(object):
     def on_connect(self, client, userdata, flags, rc):
         print("rc: " + str(rc))
         for this_topic in self.subscriptions:
-            handler_name = handler_method_prefix + this_topic.replace('/', '_'
+            handler_name = handler_method_prefix + this_topic.replace('/', '_')
             handler_method = getattr(self, handler_name, None)
             if handler_method is None:
                 print("No message handler for topic '%s'" % (this_topic))
@@ -192,7 +194,7 @@ def cameraman(helmsman):
             #camera.capture(my_stream, 'jpeg')
             if (prev_mode == 'r') or (helmsman.camera_snap == True):
               camera.capture(picfn)
-              (res, mid) = helmsman.mqtt.publish('helmsman/pic_ready', picfn)
+              (res, mid) = helmsman.mqttc.publish('helmsman/pic_ready', picfn)
               if res != mqtt.MQTT_ERR_SUCCESS:
                   print("MQTT Publish Error")
               """
