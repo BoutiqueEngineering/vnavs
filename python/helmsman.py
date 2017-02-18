@@ -3,84 +3,17 @@ from builtins import (bytes, str, open, super, range,
                       zip, round, input, int, pow, object)
 import io
 import sys
-import os
 import threading
 import time
 import cv2
-import ConfigParser
 
 from pyfirmata import Arduino, util
-
-import paho.mqtt.client as mqtt
 
 import picamera
 import picamera.array
 
 import OpticChiasm
-
-config_file_path = os.path.expanduser('~/vnavs.ini')
-handler_method_prefix = 'rmsg_'
-
-class mqtt_node(object):
-    def __init__(self, Subscriptions=[], Blocking=False):
-        self.config = ConfigParser.SafeConfigParser()
-        self.config.readfp(open(config_file_path))
-        self.blocking_mode = Blocking
-        self.subscriptions = Subscriptions
-        self.handlers = {}
-        self.broker_host = self.config.get("MqttBroker", "Host")
-        self.broker_port = int(self.config.get("MqttBroker", "Port"))	# 1883
-        self.broker_timeout = 60
-
-    def Connect(self):
-        self.mqttc = mqtt.Client()
-        # Assign event callbacks
-        self.mqttc.on_message = self.on_message
-        self.mqttc.on_connect = self.on_connect
-        self.mqttc.on_publish = self.on_publish
-        self.mqttc.on_subscribe = self.on_subscribe
-        # Connect
-        print("Connecting to MQTT broker:", self.broker_host, self.broker_port)
-        self.mqttc.connect(self.broker_host, self.broker_port, self.broker_timeout)
-        if self.blocking_mode:
-            self.mqttc.loop_forever()
-        else:
-            self.mqttc.loop_start()
-
-    def Disconnect(self):
-        if self.blocking_mode:
-            pass
-        else:
-            self.mqttc.loop_stop(force=False)
-
-    def on_connect(self, client, userdata, flags, rc):
-        print("rc: " + str(rc))
-        for this_topic in self.subscriptions:
-            handler_name = handler_method_prefix + this_topic.replace('/', '_')
-            handler_method = getattr(self, handler_name, None)
-            if handler_method is None:
-                print("No message handler for topic '%s'" % (this_topic))
-            self.handlers[this_topic] = handler_method
-            self.mqttc.subscribe(this_topic, 0)
-        print(self.subscriptions)
-
-    def on_message(self, client, userdata, message):
-        print(message.topic + " " + str(message.qos) + " " + str(message.payload))
-        handler_method = self.handlers[message.topic]
-        handler_method(message.payload.decode("utf-8"))
-
-    def on_publish(self, client, userdata, mid):
-        print("mid: " + str(mid))
-
-    def on_subscribe(self, client, userdata, mid, granted_qos):
-        print("Subscribed: " + str(mid) + " " + str(granted_qos))
-
-    def on_log(self, client, userdata, level, buf):
-        print(buf)
-
-def Test_Mqtt_Node():
-    n = mqtt_node(Subscriptions=['test'], Blocking=True)
-    n.Connect()
+import vnavs_mqtt
 
 class vehicle(object):
     """
@@ -218,7 +151,7 @@ def cameraman(helmsman):
                   helmsman.camera_snap = False
             time.sleep(sleep_interval)
 
-class helmsman(mqtt_node):
+class helmsman(vnavs_mqtt.mqtt_node):
     def __init__(self):
         super().__init__(Subscriptions=('helmsman/set_speed', 'helmsman/steer', 'helmsman/take_pic'), Blocking=False)
         self.v = vehicle()
@@ -280,6 +213,8 @@ class helmsman(mqtt_node):
           speed_goal = self.speed_goal - self.v.speed_increment
         elif speed_request == 'f':			# move forward slowly
           speed_goal = self.v.speed_crawl_forward
+        elif speed_request == 'r':			# move reveerse slowly
+          speed_goal = -self.v.speed_crawl_forward
         elif speed_request == 's':			# stop moving
           speed_goal = 0
         else:

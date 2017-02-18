@@ -36,13 +36,29 @@ margin-top: 20px;
   <hr>
   <button type="button" id="" class="btn btn-info start" onclick="startStream()">Start Camera</button>
   <button type="button" id="" class="btn btn-info" onclick="socket.emit('takePic');">Take Pic</button>
-  <button type="button" id="" class="btn btn-info" onclick="socket.emit('moveForward');">Forward</button>
-  <button type="button" id="" class="btn btn-info" onclick="socket.emit('moveStop');">Stop</button>
-  <div class="row">
-    <button type="button" id="" class="btn btn-info" onclick="socket.emit('steerLeft');">Left</button>
-    <button type="button" id="" class="btn btn-info" onclick="socket.emit('steerStraight');">Straight</button>
-    <button type="button" id="" class="btn btn-info" onclick="socket.emit('steerRight');">Right</button>
-  </div>
+  <hr>
+  <table style="border:1px; padding:30px; text-align:center;">
+  <tr>
+    <td><button type="button" id="" class="btn btn-info" onclick="socket.emit('steerLeft');">Left</button></td>
+    <td><button type="button" id="" class="btn btn-info" onclick="socket.emit('steerStraight');">Straight</button></td>
+    <td><button type="button" id="" class="btn btn-info" onclick="socket.emit('steerRight');">Right</button></td>
+    </tr>
+  <tr>
+    <td>&nbsp;</td>
+    <td><button type="button" id="" class="btn btn-info" onclick="socket.emit('moveForward');">Forward</button></td>
+    <td>&nbsp;</td>
+    </tr>
+  <tr>
+    <td>&nbsp;</td>
+    <td><button type="button" id="" class="btn btn-danger" onclick="socket.emit('moveStop');">Stop</button></td>
+    <td>&nbsp;</td>
+    </tr>
+  <tr>
+    <td>&nbsp;</td>
+    <td><button type="button" id="" class="btn btn-info" onclick="socket.emit('moveReverse');">Reverse</button></td>
+    <td>&nbsp;</td>
+    </tr>
+  </table>
   <div class="row">
     <img src="" id="stream">
   </div>
