@@ -192,6 +192,9 @@ def cameraman(helmsman):
             #camera.capture(my_stream, 'jpeg')
             if (prev_mode == 'r') or (helmsman.camera_snap == True):
               camera.capture(picfn)
+              (res, mid) = helmsman.mqtt.publish('helmsman/pic_ready', picfn)
+              if res != mqtt.MQTT_ERR_SUCCESS:
+                  print("MQTT Publish Error")
               """
               with picamera.array.PiRGBArray(camera) as stream:
                   print(time.clock())
