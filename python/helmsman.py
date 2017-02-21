@@ -14,6 +14,7 @@ import picamera.array
 
 import OpticChiasm
 import vnavs_mqtt
+import paho.mqtt.client as mqtt
 
 class vehicle(object):
     """
@@ -30,7 +31,9 @@ class vehicle(object):
         self.motor = self.board.get_pin('d:9:s')
         self.mot_offset = 90
         self.mot_goal = 0		# This is the pulse we are ramping towards
-        self.mot_jump = 10			# This is the minimum speed to start moving from stop
+        self.mot_jump_f = 5			# This is the minimum speed to start moving from stop
+        self.mot_jump_f = 10			# This is the minimum speed to start moving from stop
+        self.mot_jump_r = -5			# This is the minimum speed to start moving from stop
         self.mot_ramp = 0			# Current ramping increment
         self.mot_last_pulse = 0
         self.mot_last_pulse_commit = 0
@@ -38,7 +41,9 @@ class vehicle(object):
         self.steering = self.board.get_pin('d:10:s')
         self.st_straight = 90
         # speed in mm/second - depends on vehicle and battery condition
+        self.speed_crawl_forward = 5		# minimum start moving speed
         self.speed_crawl_forward = 8		# minimum start moving speed
+        self.speed_crawl_reverse = -5		# minimum start moving speed
         self.speed_increment = 1		# a reasonable quantity for "go a bit faster"
         self.speed_max = 13411			# 30mph / 13.4112 meters/second
         self.steering_increment	= 10		# degrees of casual steering adjustment
@@ -64,19 +69,20 @@ class vehicle(object):
                 self.mot_ramp = 0
             elif (pulse_goal != 0) and (self.mot_last_pulse == 0):
                 # we are starting to move
-                if abs(pulse_goal) > self.mot_jump:
+                if ((pulse_goal > 0) and (pulse_goal > self.mot_jump_f)) \
+			or ((pulse_goal < 0) and (pulse_goal < self.mot_jump_r)):
                     # we are starting fast, so just do it
                     self.mot_last_pulse = pulse_goal
                     self.mot_goal = pulse_goal
                     self.mot_ramp = 0
                 else:
-                    # we are starting slow, need to make an initial jump
+                    # we are starting slow, need to make an initial jump to overcome standing inertia
                     self.mot_goal = pulse_goal
                     if pulse_goal > 0:
-                      self.mot_last_pulse = self.mot_jump
+                      self.mot_last_pulse = self.mot_jump_f
                       self.mot_ramp = -1
                     else:
-                      self.mot_last_pulse = -self.mot_jump
+                      self.mot_last_pulse = self.mot_jump_r
                       self.mot_ramp = +1
             else:
                 # this is speed change while moving
@@ -87,8 +93,25 @@ class vehicle(object):
             # No change in goal, keep ramping toward that
             if self.mot_ramp != 0:
                 self.mot_last_pulse += self.mot_ramp
-                if self.mot_last_pulse == self.mot_goal:
-                    self.mot_ramp = 0
+                print("Ramp:", self.mot_last_pulse, self.mot_ramp, self.mot_goal)
+                if self.mot_goal > 0:
+                    if self.mot_ramp > 0:
+                        if self.mot_last_pulse >= self.mot_goal:
+                            self.mot_last_pulse = self.mot_goal
+                            self.mot_ramp = 0
+                    else:
+                        if self.mot_last_pulse <= self.mot_goal:
+                            self.mot_last_pulse = self.mot_goal
+                            self.mot_ramp = 0
+                else:
+                    if self.mot_ramp > 0:		# positive ramp, slowing down toward zero
+                        if self.mot_last_pulse >= self.mot_goal:
+                            self.mot_last_pulse = self.mot_goal
+                            self.mot_ramp = 0
+                    else:
+                        if self.mot_last_pulse <= self.mot_goal:
+                            self.mot_last_pulse = self.mot_goal
+                            self.mot_ramp = 0
         self.motor.write(self.mot_offset + self.mot_last_pulse)
         if self.mot_last_pulse_commit != self.mot_last_pulse:
            print('Motor: ', self.mot_last_pulse)
@@ -122,12 +145,13 @@ def cameraman(helmsman):
                 picfn = 'temp/single.jpg'
             else: 
                 run_ct += 1
-                picfn = 'temp/R%d_%d.jpg' % (run_ct, time.clock())
+                picfn = 'temp/R%s_%s_%s_S%s_T%s.jpg' % (helmsman.camera_run, run_ct, int(time.clock()*1000), helmsman.speed_goal, helmsman.steering_goal)
             #my_stream = io.BytesIO()
             #camera.capture(my_stream, 'jpeg')
             if (prev_mode == 'r') or (helmsman.camera_snap == True):
               camera.capture(picfn)
               (res, mid) = helmsman.mqttc.publish('helmsman/pic_ready', picfn)
+              print("PIC", picfn)
               if res != mqtt.MQTT_ERR_SUCCESS:
                   print("MQTT Publish Error")
               """
@@ -158,6 +182,7 @@ class helmsman(vnavs_mqtt.mqtt_node):
         self.camera_mode = 's'		# set by helmsman, s=single, r=run
         self.camera_snap = False	# set by helmsman, cleared by cameraman
         self.camera_last_fn = None	# set by camerman
+        self.camera_run = str(int(time.clock() * 1000))		# set by helmsman, id for series of pics
         self.speed_goal = 0		# (int) mm/sec
         self.steering_goal = 0		# (int) degrees (0 = straigh, neg is degrees left, pos is degrees right)
         self.camera = threading.Thread(target=cameraman, args=(self,))
@@ -202,6 +227,7 @@ class helmsman(vnavs_mqtt.mqtt_node):
             self.camera_mode = 's'
         else:
             self.camera_mode = 'r'
+            self.camera_run = str(int(time.clock() * 1000))
             #time.sleep(2)
         self.v.Motor(self.speed_goal)
         self.v.Steering(self.steering_goal)
@@ -212,9 +238,12 @@ class helmsman(vnavs_mqtt.mqtt_node):
         elif speed_request == '-':
           speed_goal = self.speed_goal - self.v.speed_increment
         elif speed_request == 'f':			# move forward slowly
-          speed_goal = self.v.speed_crawl_forward
+          if self.speed_goal <= 0:
+            speed_goal = self.v.speed_crawl_forward
+          else:
+            speed_goal = self.v.speed_crawl_forward + 1
         elif speed_request == 'r':			# move reveerse slowly
-          speed_goal = -self.v.speed_crawl_forward
+          speed_goal = self.v.speed_crawl_reverse
         elif speed_request == 's':			# stop moving
           speed_goal = 0
         else:
