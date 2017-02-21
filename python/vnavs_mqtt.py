@@ -4,23 +4,33 @@ from builtins import (bytes, str, open, super, range,
 import sys
 import os
 import time
-import ConfigParser
 
 import paho.mqtt.client as mqtt
+
+if sys.version_info[0] < 3:
+    import ConfigParser
+else:
+    import configparser as ConfigParser
 
 config_file_path = os.path.expanduser("~/vnavs.ini")
 handler_method_prefix = 'rmsg_'
 
 class mqtt_node(object):
-    def __init__(self, Subscriptions=[], Blocking=False):
+    def __init__(self, Subscriptions=[], Blocking=False, BlockingTimeoutSecs=1.0):
         self.config = ConfigParser.SafeConfigParser()
         self.config.readfp(open(config_file_path))
         self.blocking_mode = Blocking
+        self.blocking_timeout = BlockingTimeoutSecs
         self.subscriptions = Subscriptions
         self.handlers = {}
         self.broker_host = self.config.get("MqttBroker", "Host")
         self.broker_port = int(self.config.get("MqttBroker", "Port"))	# 1883
         self.broker_timeout = 60
+        self.debug = 0
+        if self.blocking_mode:
+            print("Blocking Mode")
+        else:
+            print("Non-Blocking Mode")
 
     def Connect(self):
         self.mqttc = mqtt.Client()
@@ -32,9 +42,15 @@ class mqtt_node(object):
         # Connect
         self.mqttc.connect(self.broker_host, self.broker_port, self.broker_timeout)
         if self.blocking_mode:
-            self.mqttc.loop_forever()
+            if self.blocking_timeout <= 0:
+                self.mqttc.loop_forever()
+            # else, periodically call CheckMqtt()
         else:
+            # this starts a separate thread which is handy, but tkinter and others don't support threads
             self.mqttc.loop_start()
+
+    def CheckMqtt(self):
+         self.mqttc.loop(timeout=self.blocking_timeout)
 
     def Disconnect(self):
         if self.blocking_mode:
@@ -42,8 +58,8 @@ class mqtt_node(object):
         else:
             self.mqttc.loop_stop(force=False)
 
-    def on_connect(self, client, userdata, flags, rc):
-        print("rc: " + str(rc))
+    def RegisterMessageHandlers(self):
+        self.handlers = {}
         for this_topic in self.subscriptions:
             handler_name = handler_method_prefix + this_topic.replace('/', '_')
             handler_method = getattr(self, handler_name, None)
@@ -53,8 +69,12 @@ class mqtt_node(object):
             self.mqttc.subscribe(this_topic, 0)
         print(self.subscriptions)
 
+    def on_connect(self, client, userdata, flags, rc):
+        print("on_connect() rc: " + str(rc))
+        self.RegisterMessageHandlers()
+
     def on_message(self, client, userdata, message):
-        print(message.topic + " " + str(message.qos) + " " + str(message.payload))
+        print("on_message()", message.topic + " " + str(message.qos) + " " + str(message.payload))
         handler_method = self.handlers[message.topic]
         handler_method(message.payload.decode("utf-8"))
 

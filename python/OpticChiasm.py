@@ -416,6 +416,7 @@ class ImageAnalyzer(object):
             image = cv2.imread(fpath)
         DrawGrid(self.Snapshot(image, 'Original'))
 
+        start_clock = time.clock()
         if self.img_color_balance_method == 'c':
             image = simplest_cb(image, 20)
         self.Snapshot(image, 'ColorBalanced')
@@ -458,10 +459,12 @@ class ImageAnalyzer(object):
         (imgxx, contours, hierarchy) = cv2.findContours(canny_image.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         print("Contour Ct:", len(contours))
 
+        print("FindLines() elapsed time:", time.clock() - start_clock)
         if self.do_filter_contours:
             contours = FilterContours(cropped_image, contours)
             print("Filtered Contour Ct:", len(contours))
             self.ClassifyContours(cropped_image, contours)
+        print("FindLines() elapsed time:", time.clock() - start_clock)
 
         annotated_cropped_image = cropped_image.copy()
         outline_color = (0, 255, 0)	# green
@@ -471,11 +474,13 @@ class ImageAnalyzer(object):
         if self.horz_line is not None:
             cv2.line(annotated_cropped_image, self.horz_line[0], self.horz_line[1], path_guide_color, 2)
 
+        print("FindLines() elapsed time:", time.clock() - start_clock)
         if self.annotate_fill_method == 'b':
             self.AnnotateContourBoxes(annotated_cropped_image, contours)
         elif self.annotate_fill_method == 'f':
             self.DrawContourFilled(annotated_cropped_image, contours)
 
+        print("FindLines() elapsed time:", time.clock() - start_clock)
         if self.annotate_contour_outline:
             outline_color = (0, 255, 0)	# green
             cv2.drawContours(annotated_cropped_image, contours, -1, outline_color, 1)
@@ -656,11 +661,12 @@ if __name__ == '__main__':
   brain.img_fpath = 'opencv_1'; brain.img_crop=(450,75)		# center stripe
   brain.img_fpath = 'opencv_1'; brain.img_crop=(600,75)		# right stripe
   brain.img_fpath = 'opencv_4'; brain.img_crop=(550,75)		# right stripe
-  brain.img_fpath = 'opencv_6'; brain.img_crop=(250,450)
   brain.img_fpath = 'R10_11'; brain.img_crop=(250,450)
+  brain.img_fpath = 'opencv_6'; brain.img_crop=(250,450)
   brain.img_source_dir = '/volumes/pi/projects/vnavs/temp'
-  brain.img_fname_suffix = '_s'
+  brain.img_source_dir = ''
   brain.img_fname_suffix = ''
+  brain.img_fname_suffix = '_s'
   brain.FindLines()
   stop_time = time.clock()
   print("Elapsed Time:", (stop_time - start_time))
