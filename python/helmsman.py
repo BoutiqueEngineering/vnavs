@@ -35,8 +35,8 @@ class vehicle(object):
         self.mot_jump_f = 10			# This is the minimum speed to start moving from stop
         self.mot_jump_r = -5			# This is the minimum speed to start moving from stop
         self.mot_ramp = 0			# Current ramping increment
+        self.mot_this_pulse = 0
         self.mot_last_pulse = 0
-        self.mot_last_pulse_commit = 0
         self.motor.write(self.mot_offset)	# Stop motor if on
         self.steering = self.board.get_pin('d:10:s')
         self.st_straight = 90
@@ -54,6 +54,59 @@ class vehicle(object):
         # Degree of servo turn, but cetnered at 0 instead of 90.
         return speed
 
+    def self.NewGoal(speed_goal)
+        if pulse_goal == 0:
+            # we want to stop
+            self.mot_this_pulse = pulse_goal
+            self.mot_goal = pulse_goal
+            self.mot_ramp = 0
+            return
+        if (pulse_goal != 0) and (self.mot_this_pulse == 0):
+            # we are starting to move
+            if ((pulse_goal > 0) and (pulse_goal > self.mot_jump_f)) \
+			or ((pulse_goal < 0) and (pulse_goal < self.mot_jump_r)):
+                # we are starting fast, so just do it
+                self.mot_this_pulse = pulse_goal
+                self.mot_goal = pulse_goal
+                self.mot_ramp = 0
+                return
+            else:
+                # we are starting slow, need to make an initial jump to overcome standing inertia
+                self.mot_goal = pulse_goal
+                if pulse_goal > 0:
+                    self.mot_this_pulse = self.mot_jump_f
+                    self.mot_ramp = -1
+                else:
+                    self.mot_this_pulse = self.mot_jump_r
+                    self.mot_ramp = +1
+                return
+        # this is speed change while moving
+        self.mot_this_pulse = pulse_goal
+        self.mot_goal = pulse_goal
+        self.mot_ramp = 0
+
+    def RampSpeeed(self):
+        self.mot_this_pulse += self.mot_ramp
+        print("Ramp:", self.mot_this_pulse, self.mot_ramp, self.mot_goal)
+        if self.mot_goal > 0:
+            if self.mot_ramp > 0:
+                if self.mot_this_pulse >= self.mot_goal:
+                    self.mot_this_pulse = self.mot_goal
+                    self.mot_ramp = 0
+            else:
+                if self.mot_this_pulse <= self.mot_goal:
+                    self.mot_this_pulse = self.mot_goal
+                    self.mot_ramp = 0
+        else:
+            if self.mot_ramp > 0:		# positive ramp, slowing down toward zero
+                if self.mot_this_pulse >= self.mot_goal:
+                    self.mot_this_pulse = self.mot_goal
+                    self.mot_ramp = 0
+            else:
+                if self.mot_this_pulse <= self.mot_goal:
+                    self.mot_this_pulse = self.mot_goal
+                    self.mot_ramp = 0
+
     def Motor(self, speed_goal):
         # This sends commands to the hardware motor controller (ESC or H-Bridge).
         # This handles ramping if not handled by hardware motor controller.
@@ -62,60 +115,17 @@ class vehicle(object):
         pulse_goal = self.ConvertSpeedToPulseParameter(speed_goal)
         if pulse_goal != self.mot_goal:
             # the goal has changed, need to reset ramping variables
-            if pulse_goal == 0:
-                # we want to stop
-                self.mot_last_pulse = pulse_goal
-                self.mot_goal = pulse_goal
-                self.mot_ramp = 0
-            elif (pulse_goal != 0) and (self.mot_last_pulse == 0):
-                # we are starting to move
-                if ((pulse_goal > 0) and (pulse_goal > self.mot_jump_f)) \
-			or ((pulse_goal < 0) and (pulse_goal < self.mot_jump_r)):
-                    # we are starting fast, so just do it
-                    self.mot_last_pulse = pulse_goal
-                    self.mot_goal = pulse_goal
-                    self.mot_ramp = 0
-                else:
-                    # we are starting slow, need to make an initial jump to overcome standing inertia
-                    self.mot_goal = pulse_goal
-                    if pulse_goal > 0:
-                      self.mot_last_pulse = self.mot_jump_f
-                      self.mot_ramp = -1
-                    else:
-                      self.mot_last_pulse = self.mot_jump_r
-                      self.mot_ramp = +1
-            else:
-                # this is speed change while moving
-                self.mot_last_pulse = pulse_goal
-                self.mot_goal = pulse_goal
-                self.mot_ramp = 0
+            self.NewGoal(speed_goal)
         else:
             # No change in goal, keep ramping toward that
             if self.mot_ramp != 0:
-                self.mot_last_pulse += self.mot_ramp
-                print("Ramp:", self.mot_last_pulse, self.mot_ramp, self.mot_goal)
-                if self.mot_goal > 0:
-                    if self.mot_ramp > 0:
-                        if self.mot_last_pulse >= self.mot_goal:
-                            self.mot_last_pulse = self.mot_goal
-                            self.mot_ramp = 0
-                    else:
-                        if self.mot_last_pulse <= self.mot_goal:
-                            self.mot_last_pulse = self.mot_goal
-                            self.mot_ramp = 0
-                else:
-                    if self.mot_ramp > 0:		# positive ramp, slowing down toward zero
-                        if self.mot_last_pulse >= self.mot_goal:
-                            self.mot_last_pulse = self.mot_goal
-                            self.mot_ramp = 0
-                    else:
-                        if self.mot_last_pulse <= self.mot_goal:
-                            self.mot_last_pulse = self.mot_goal
-                            self.mot_ramp = 0
-        self.motor.write(self.mot_offset + self.mot_last_pulse)
-        if self.mot_last_pulse_commit != self.mot_last_pulse:
-           print('Motor: ', self.mot_last_pulse)
-           self.mot_last_pulse_commit = self.mot_last_pulse
+                self.RampSpeeed()
+
+        # we know our pulse requirement, tell the hardware
+        self.motor.write(self.mot_offset + self.mot_this_pulse)
+        if self.mot_last_pulse != self.mot_this_pulse:
+           print('Motor: ', self.mot_this_pulse)
+           self.mot_last_pulse = self.mot_this_pulse
 
     def Steering(self, direction):
          self.steering.write(90+direction)
@@ -201,8 +211,15 @@ class helmsman(vnavs_mqtt.mqtt_node):
         print(self.steering_goal)
 
     def Loop(self):
+        # Speed and Steering goals are set asynchronously via MQTT messages
         while True:
-            self.Process()
+            if self.speed_goal == 0:
+                self.camera_mode = 's'
+            else:
+                self.camera_mode = 'r'
+                self.camera_run = str(int(time.clock() * 1000))
+            self.v.Motor(self.speed_goal)
+            self.v.Steering(self.steering_goal)
             time.sleep(0.1)
 
     def ProcessImage(self):
@@ -210,38 +227,26 @@ class helmsman(vnavs_mqtt.mqtt_node):
         brain.do_save_snaps = False
         #brain.FindLines(image(
 
-    def Process(self):
-        self.GetGoal()
-        self.GetActuals()
-        self.AdjustDriving()
-
-    def GetGoal(self):
-        pass
-
-    def GetActuals(self):
-        pass
-
-    def AdjustDriving(self):
-        # This is just a place holder
-        if self.speed_goal == 0:
-            self.camera_mode = 's'
-        else:
-            self.camera_mode = 'r'
-            self.camera_run = str(int(time.clock() * 1000))
-            #time.sleep(2)
-        self.v.Motor(self.speed_goal)
-        self.v.Steering(self.steering_goal)
-
     def GetGoalSpeed(self, speed_request):
+        # This gets called when an MQTT message arrives, which is asyncronous
+        # from Loop(). It is possible that Loop() has not seen or acted upon
+        # the previous goal. This means care must be exercised when processing
+        # incremental requests. A subsequent +1 could be sent due to impatience
+        # rather than an actual intent to increment speed in additiion to any
+        # pending increments. There shouldn't be much latency, but for big
+        # fast bots, some caution is in order.
         if speed_request in '+=':
           speed_goal = self.speed_goal + self.v.speed_increment
         elif speed_request == '-':
           speed_goal = self.speed_goal - self.v.speed_increment
-        elif speed_request == 'f':			# move forward slowly
+        elif speed_request in 'fd':			# move forward slowly
           if self.speed_goal <= 0:
             speed_goal = self.v.speed_crawl_forward
           else:
-            speed_goal = self.v.speed_crawl_forward + 1
+            if speed_request == 'f':			# move reveerse slowly
+              speed_goal = self.v.speed_crawl_forward + 1
+            else:
+              speed_goal = self.v.speed_crawl_forward
         elif speed_request == 'r':			# move reveerse slowly
           speed_goal = self.v.speed_crawl_reverse
         elif speed_request == 's':			# stop moving
