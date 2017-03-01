@@ -26,6 +26,7 @@ class mqtt_node(object):
         self.broker_host = self.config.get("MqttBroker", "Host")
         self.broker_port = int(self.config.get("MqttBroker", "Port"))	# 1883
         self.broker_timeout = 60
+        self.verbose = False
         self.debug = 0
         if self.blocking_mode:
             print("Blocking Mode")
@@ -67,7 +68,6 @@ class mqtt_node(object):
                 print("No message handler for topic '%s'" % (this_topic))
             self.handlers[this_topic] = handler_method
             self.mqttc.subscribe(this_topic, 0)
-        print(self.subscriptions)
 
     def on_connect(self, client, userdata, flags, rc):
         print("on_connect() rc: " + str(rc))
@@ -79,7 +79,8 @@ class mqtt_node(object):
         handler_method(message.payload.decode("utf-8"))
 
     def on_publish(self, client, userdata, mid):
-        print("mid: " + str(mid))
+        if self.verbose:
+            print("on_publish() mid: " + str(mid))
 
     def on_subscribe(self, client, userdata, mid, granted_qos):
         print("Subscribed: " + str(mid) + " " + str(granted_qos))
