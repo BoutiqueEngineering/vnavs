@@ -67,8 +67,9 @@ class vehicle(object):
         self.mot_speed_goal = 0			# we may be ramping toward this
         self.mot_speed_ramp = 0			# current speed, on way to goal
         self.speed_max = 13411			# 30mph / 13.4112 meters/second
-        self.steering_increment	= 15		# degrees of casual steering adjustment
-        self.steering_max = 60			# 60 degrees left or right
+        self.steering_increment	= 10		# degrees of casual steering adjustment
+        self.steering_max = 90			# 60 degrees left or right
+        self.steering_last = 0
         self.Estop()
 
     def ConvertSpeedToPulseParameter(self, speed):
@@ -196,7 +197,10 @@ class vehicle(object):
         self.mot_last_tick = self.mot_this_tick
 
     def Steering(self, direction):
-         self.steering.write(90+direction)
+        if direction != self.steering_last:
+            print("Steer:", direction)
+        self.steering.write(90+direction)
+        self.steering_last = direction
 
 def cameraman(helmsman, Verbose=False):
     # This will run in its own thread.
@@ -205,6 +209,7 @@ def cameraman(helmsman, Verbose=False):
         camera.iso = 800
         camera.shutter_speed = 10000		# microseconds, 1000 = 1ms
         camera.vflip = True
+        camera.hflip = True
         # Camera warm-up time
         time.sleep(2)
         prev_mode = 'x'				# x is invalid, forces startup in single mode
