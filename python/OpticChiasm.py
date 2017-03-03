@@ -157,51 +157,6 @@ def thinning_example(src):
 	cv2.imshow("thinning", bw2)
 	cv2.waitKey()
 
-def LineFind(fpath):
-  # load img
-  original_image = cv2.imread(fpath + '_s.jpg')
-  #img = cv2.cvtColor(cv2.imread(fpath), cv2.COLOR_BGR2RGB)
-  #[420:,:]
-  img = simplest_cb(original_image, 20)
-  #img = original_image
-
-  # crop
-  height, width, channels = img.shape
-  c_x = 250
-  c_y = 375
-  c_w = 425
-  print("Crop: (%d, %d) start (%d, %d) width %d" % (width, height, c_x, c_y, c_w))
-  img = img[c_y:height, c_x:c_x+c_w]
-
-  # bw img
-  bw_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-  bw_image = cv2.blurr(bw_image.copy(), (5,5))
-
-  # histogram equalization
-  clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-  claheimg = clahe.apply(bw_image)
-
-  # canny edge detection
-  bw_edged = auto_canny(bw_image, 0.33)
-  cont2, contours, hierarchy = cv2.findContours(bw_edged.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-  countoured_img = cv2.drawContours(img.copy(), contours, -1, (0,255,0), 1)
-
-  # the histogram equalization definitely makes everythign super sharp, but possibly
-  # too sharp 
-  clahe_edged = auto_canny(claheimg, 0.33)
-
-  blurred_edges = cv2.GaussianBlur(clahe_edged, (21,21), 0)
-
-  find_corners = auto_canny(clahe.apply(blurred_edges), 0.33)
-
-  DrawGrid(original_image)
-  cv2.imwrite(fpath + '_DA.jpg', original_image)
-  cv2.imwrite(fpath + '_DB.jpg', img)
-  cv2.imwrite(fpath + '_DC.jpg', bw_image)
-  cv2.imwrite(fpath + '_DD.jpg', countoured_img)
-  cv2.imwrite(fpath + '_DE.jpg', find_corners)
-  cv2.imwrite(fpath + '_DT.jpg', thinning_example(img))
-
 def HoughLines(img, gray):
   contoured_image = img.copy()
   edges = cv2.Canny(gray.copy() ,100,200,apertureSize = 3)	# app size is 3, 5 or 7
@@ -302,43 +257,6 @@ def DrawContourFilled(img, contours):
     #cv2.drawContours(final, contours, i, (0,0,255), 1)    # draw contour outlines
   return final
 
-def BenFindLines(fpath):
-  # load img
-  img = cv2.cvtColor(cv2.imread(fpath + '_s.jpg'), cv2.COLOR_BGR2RGB)
-
-  # bw img
-  bw_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-  #bw_image = cv2.equalizeHist(bw_image)
-  bw_image = simplest_cb(bw_image, 20)
-
-  # histogram equalization
-
-  clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-  claheimg = clahe.apply(bw_image)
-
-  bw_edged = auto_canny(bw_image, 0.33)
-
-  cont2, contours, hierarchy = cv2.findContours(bw_edged.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-  #countoured_img = cv2.drawContours(img.copy(), contours, -1, (0,255,0), 1)
-  #countoured_img = DrawContourBoxes(countoured_img, contours)
-  countoured_img = DrawContourFilled(img.copy(), contours)
-
-  # the histogram equalization definitely makes everythign super sharp, but possibly
-  # too sharp 
-  clahe_edged = auto_canny(claheimg, 0.33)
-
-  blurred_edges = cv2.GaussianBlur(clahe_edged, (21,21), 0)
-
-  find_corners = auto_canny(clahe.apply(blurred_edges), 0.33)
-
-  DrawGrid(img)
-  cv2.imwrite(fpath + '_DA.jpg', img)
-  #cv2.imwrite(fpath + '_DB.jpg', balanced_image)
-  #cv2.imwrite(fpath + '_DC.jpg', cropped_image)
-  cv2.imwrite(fpath + '_DD.jpg', bw_image)
-  cv2.imwrite(fpath + '_DE.jpg', bw_edged)
-  cv2.imwrite(fpath + '_DF.jpg', countoured_img)
-
 def ColorString(color, bw_threshold=20):
   # bw_sthreshold of 30 was about right for white line
   min_v = min(color)
@@ -389,12 +307,13 @@ def mean(numbers):
     return sum(numbers) / len(numbers)
 
 class ImageAnalyzer(object):
-    def __init__(self, fpath=None, Crop=None,
+    def __init__(self, fpath=None, Crop=None, CroppedHeight=None,
 				CannyMethod=1, ContourFill='b', ContourOutline=True,
 				DoFilterContours=True,
 				ColorBalance='c', Blur='x'):
         self.img_fpath = fpath
         self.img_crop = Crop
+        self.img_cropped_height = CroppedHeight
         self.img_blur_method = Blur
         self.img_canny_method = CannyMethod
         self.img_color_balance_method = ColorBalance
@@ -408,6 +327,7 @@ class ImageAnalyzer(object):
         self.snap_titles = []
         self.do_save_snaps = True
         self.vert_line = None
+        self.horz_line = None
 
     def FindLines(self, image=None):
         if image is None:
@@ -422,12 +342,18 @@ class ImageAnalyzer(object):
         self.Snapshot(image, 'ColorBalanced')
 
         # crop
-        if self.img_crop is not None:
+        if (self.img_crop is not None) or (self.img_cropped_height is not None):
             height, width, channels = image.shape
-            c_x = self.img_crop[0]
-            c_y = 400
-            c_y = 300
-            c_w = self.img_crop[1]
+            if self.img_crop is None:
+                c_x = 0
+                c_w = width
+            else:
+                c_x = self.img_crop[0]
+                c_w = self.img_crop[1]
+            if self.img_cropped_height is None:
+                c_y = 0
+            else:
+                c_y = height - self.img_cropped_height
             print("Crop: (%d, %d) start (%d, %d) width %d" % (width, height, c_x, c_y, c_w))
             cropped_image = image[c_y:height, c_x:c_x+c_w]
             self.Snapshot(cropped_image, 'Cropped')
@@ -472,6 +398,7 @@ class ImageAnalyzer(object):
         if self.vert_line is not None:
             cv2.line(annotated_cropped_image, self.vert_line[0], self.vert_line[1], path_guide_color, 2)
         if self.horz_line is not None:
+            print("HORZ", self.horz_line)
             cv2.line(annotated_cropped_image, self.horz_line[0], self.horz_line[1], path_guide_color, 2)
 
         print("FindLines() elapsed time:", time.clock() - start_clock)
@@ -488,11 +415,15 @@ class ImageAnalyzer(object):
 
         self.WriteSnapshots()
 
+        return self.img_annotated
+
     def WriteSnapshots(self):
         if not self.do_save_snaps:
             return
         delete_pattern = self.img_fpath + "_D*.jpg"
-        dir = '.'
+        dir = self.img_source_dir
+        if dir == '':
+            dir = '.'
         for f in os.listdir(dir):
             if re.search(delete_pattern, f):
                 print("Deleting", f)
@@ -500,10 +431,11 @@ class ImageAnalyzer(object):
 
         for ix, image in enumerate(self.snap_shots):
           fn = "%s_D%02d_%s.jpg" % (self.img_fpath, ix, self.snap_titles[ix])
-          cv2.imwrite(fn, image)
+          fpath = os.path.join(self.img_source_dir, fn)
+          cv2.imwrite(fpath, image)
 
     def ClassifyContours(self, img, contours):
-        rows,cols = img.shape[:2]
+        height, width = img.shape[:2]
         vert = []
         vert_contours = []
         horz = []
@@ -526,24 +458,24 @@ class ImageAnalyzer(object):
         #
         vert_points = np.asarray(vert_contours)
         print("Vert:", vert, mean(vert), "Points:", vert_points)
+        self.vert_line = None
         if len(vert_points) > 0:
             [vx,vy,x,y] = cv2.fitLine(vert_points, cv2.DIST_L1,0,0.01,0.01)			# four points
-            lefty = int((-x*vy/vx) + y)
-            righty = int(((cols-x)*vy/vx)+y)
-            self.vert_line = ((cols-1,righty), (0,lefty))
-        else:
-            self.vert_line = None
+            left_y = int((-x*vy/vx) + y)
+            right_y = int(((width-x)*vy/vx)+y)
+            if (left_y >= 0) and (left_y <= height) and (right_y >= 0) and (right_y <= height):
+                self.vert_line = ((width-1,right_y), (0,left_y))
         print(self.vert_line)
         #
         horz_points = np.asarray(horz_contours)
         print("Horz:", horz, mean(horz), "Points:", horz_points)
+        self.horz_line = None
         if len(horz_points) > 0:
             [vx,vy,x,y] = cv2.fitLine(horz_points, cv2.DIST_L1,0,0.01,0.01)			# four points
-            lefty = int((-x*vy/vx) + y)
-            righty = int(((cols-x)*vy/vx)+y)
-            self.horz_line = ((cols-1,righty), (0,lefty))
-        else:
-            self.horz_line = None
+            left_y = int((-x*vy/vx) + y)
+            right_y = int(((width-x)*vy/vx)+y)
+            if (left_y >= 0) and (left_y <= height) and (right_y >= 0) and (right_y <= height):
+                self.horz_line = ((width-1,right_y), (0,left_y))
 
     def Snapshot(self, image, title='image'):
         """
@@ -663,10 +595,14 @@ if __name__ == '__main__':
   brain.img_fpath = 'opencv_4'; brain.img_crop=(550,75)		# right stripe
   brain.img_fpath = 'R10_11'; brain.img_crop=(250,450)
   brain.img_fpath = 'opencv_6'; brain.img_crop=(250,450)
+  brain.img_fpath = 'opencv_7'; brain.img_crop=(250,450)
+  brain.img_fpath = 'opencv_7'; brain.img_crop=(300,200); brain.img_cropped_height=75
   brain.img_source_dir = '/volumes/pi/projects/vnavs/temp'
-  brain.img_source_dir = ''
+  brain.img_source_dir = 'samples'
   brain.img_fname_suffix = ''
   brain.img_fname_suffix = '_s'
+  brain.do_filter_contours = True
+  brain.do_filter_contours = False
   brain.FindLines()
   stop_time = time.clock()
   print("Elapsed Time:", (stop_time - start_time))
