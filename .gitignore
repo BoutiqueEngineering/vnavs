@@ -42,4 +42,4 @@ jspm_packages
 
 # Test Captures and Work Data
 temp
-python/*D*.jpg
+python/samples/*_D*.jpg

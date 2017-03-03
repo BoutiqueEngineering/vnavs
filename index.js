@@ -43,6 +43,7 @@ var socket_event_status = 'vnavsStatus'			// to browser, provide vnavs state
 var socket_event_startStream = 'startStream'		// from browser, request to start getting notifications
 var socket_event_take_pic = 'takePic'			// from browser, operate camera
 var socket_event_move_forward = 'moveForward'		// from browser, move forward
+var socket_event_move_slow = 'moveSlow'			// from browser, move slow
 var socket_event_move_reverse = 'moveReverse'		// from browser, move backward
 var socket_event_move_stop = 'moveStop'			// from browser, move stop
 var socket_event_steer_straight = 'steerStraight'
@@ -79,6 +80,10 @@ io.on('connection', function(socket) {
   socket.on(socket_event_move_forward, function() {
     console.log("forward");
     mqttc.publish(mqtt_topic_set_speed, 'f')
+  });
+  socket.on(socket_event_move_slow, function() {
+    console.log("forward");
+    mqttc.publish(mqtt_topic_set_speed, 'd')
   });
   socket.on(socket_event_move_reverse, function() {
     console.log("reverse");
